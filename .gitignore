@@ -1,0 +1,14 @@
+# Godot import cache
+godot/.godot/
+
+# Local tool/session config (not part of the artifact)
+.mcp.json
+opencode.json
+.claude/
+
+# Empty engine templates that live in this workspace
+unity_urp_3d/
+unity_urp_2d/
+
+# Dev-time MCP addon (no license file in distributed copy; not part of the artifact)
+godot/addons/
