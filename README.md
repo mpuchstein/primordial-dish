@@ -16,7 +16,14 @@ verification status, next steps).
 |---|---|---|
 | ![genesis](godot/screenshots/01_genesis.png) | ![symbiotes](godot/screenshots/04_symbiotes.png) | ![polymers](godot/screenshots/05_polymers.png) |
 
-## Run it
+## Download it (no engine needed)
+
+Prebuilt single-file binaries (engine embedded):
+[**v1.0.0 release**](https://github.com/mpuchstein/primordial-dish/releases/tag/v1.0.0)
+— Linux x86_64 (tested on Arch + RX 6650 XT) and Windows x86_64 (built,
+not machine-tested). Vulkan-capable GPU required for the fast path.
+
+## Run it from source
 
 Open `godot/` in Godot 4.7 and press F5. Requires a Vulkan-capable GPU
 (Forward+; falls back to a slow CPU reference sim otherwise).
