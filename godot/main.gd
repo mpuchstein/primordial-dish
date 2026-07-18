@@ -209,18 +209,18 @@ func load_preset_index(i: int) -> void:
 
 
 func save_screenshot() -> void:
-	DirAccess.make_dir_recursive_absolute("res://screenshots")
+	DirAccess.make_dir_recursive_absolute("user://screenshots")
 	var img := get_viewport().get_texture().get_image()
-	var path := "res://screenshots/shot_%d.png" % int(Time.get_unix_time_from_system())
+	var path := "user://screenshots/shot_%d.png" % int(Time.get_unix_time_from_system())
 	img.save_png(path)
 	print("screenshot saved: ", path)
 
 
 func snapshot_preset() -> void:
-	DirAccess.make_dir_recursive_absolute("res://presets")
+	DirAccess.make_dir_recursive_absolute("user://presets")
 	var d: Dictionary = sim.to_dict()
 	d["name"] = "snap_%d" % int(Time.get_unix_time_from_system())
-	var path := "res://presets/%s.json" % d["name"]
+	var path := "user://presets/%s.json" % d["name"]
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_string(JSON.stringify(d, "  "))
 	f.close()

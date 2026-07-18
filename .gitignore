@@ -12,3 +12,6 @@ unity_urp_2d/
 
 # Dev-time MCP addon (no license file in distributed copy; not part of the artifact)
 godot/addons/
+
+# Release build artifacts
+dist/
