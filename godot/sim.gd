@@ -130,6 +130,12 @@ func set_matrix_at(i: int, v: float) -> void:
 	matrix[i] = v
 
 
+func set_matrix(m: PackedFloat32Array) -> void:
+	if m.size() != matrix.size():
+		return
+	matrix = m.duplicate()
+
+
 func apply_radial(center: Vector2, radius: float, strength: float) -> void:
 	var r2 := radius * radius
 	var w := world_size.x

@@ -17,11 +17,11 @@ config/icon="res://icon.svg"
 
 [display]
 
+window/stretch/mode="disabled"
+
 window/size/viewport_width=1280
 window/size/viewport_height=720
 
-window/stretch/mode="canvas_items"
-window/stretch/aspect="expand"
 
 
 [physics]
@@ -85,4 +85,16 @@ pl_shot={
 pl_stir={
 "deadzone": 0.5,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":67,"physical_keycode":67,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)]
+}
+pl_breed={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":66,"physical_keycode":66,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)]
+}
+pl_pick6={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":54,"physical_keycode":54,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)]
+}
+pl_back={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":4194305,"physical_keycode":4194305,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)]
 }

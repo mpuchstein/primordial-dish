@@ -15,3 +15,6 @@ godot/addons/
 
 # Release build artifacts
 dist/
+
+# Local dev overrides (MCP bridge)
+godot/override.cfg

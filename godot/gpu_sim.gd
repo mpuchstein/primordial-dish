@@ -92,9 +92,14 @@ var dt := 1.0 / 60.0
 
 var rng := RandomNumberGenerator.new()
 
+static var _shared_shader := RID()
+static var _shared_pipeline := RID()
+static var _shared_refs := 0
+
 var _rd: RenderingDevice
 var _shader := RID()
 var _pipeline := RID()
+var _shader_held := false
 var _pos_buf: Array = [RID(), RID()]
 var _vel_buf: Array = [RID(), RID()]
 var _species_buf := RID()
@@ -147,6 +152,13 @@ func mutate_matrix(amount := 0.18) -> void:
 
 func set_matrix_at(i: int, v: float) -> void:
 	matrix[i] = v
+	_upload_matrix()
+
+
+func set_matrix(m: PackedFloat32Array) -> void:
+	if m.size() != matrix.size():
+		return
+	matrix = m.duplicate()
 	_upload_matrix()
 
 
@@ -230,7 +242,13 @@ func _alloc_gpu() -> void:
 
 
 func _ensure_shader() -> void:
-	if _shader.is_valid():
+	if _shader_held:
+		return
+	if _shared_pipeline.is_valid():
+		_shader = _shared_shader
+		_pipeline = _shared_pipeline
+		_shared_refs += 1
+		_shader_held = true
 		return
 	var src := RDShaderSource.new()
 	src.language = RenderingDevice.SHADER_LANGUAGE_GLSL
@@ -242,6 +260,11 @@ func _ensure_shader() -> void:
 		return
 	_shader = _rd.shader_create_from_spirv(spirv)
 	_pipeline = _rd.compute_pipeline_create(_shader)
+	if _pipeline.is_valid():
+		_shared_shader = _shader
+		_shared_pipeline = _pipeline
+		_shared_refs = 1
+	_shader_held = _pipeline.is_valid()
 
 
 func _make_uset(pin: RID, vin: RID, pout: RID, vout: RID) -> RID:
@@ -292,8 +315,17 @@ func _free_gpu() -> void:
 
 func shutdown() -> void:
 	_free_gpu()
-	if _rd != null:
-		if _pipeline.is_valid():
-			_rd.free_rid(_pipeline)
-		if _shader.is_valid():
-			_rd.free_rid(_shader)
+	if not _shader_held:
+		return
+	_shader_held = false
+	_shared_refs -= 1
+	if _rd != null and _shared_refs <= 0:
+		if _shared_pipeline.is_valid():
+			_rd.free_rid(_shared_pipeline)
+		if _shared_shader.is_valid():
+			_rd.free_rid(_shared_shader)
+		_shared_pipeline = RID()
+		_shared_shader = RID()
+		_shared_refs = 0
+	_pipeline = RID()
+	_shader = RID()

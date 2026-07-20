@@ -1,70 +1,74 @@
 extends Node2D
 
-const Sim = preload("res://sim.gd")
-const GpuSim = preload("res://gpu_sim.gd")
+const Dish = preload("res://dish.gd")
 const UI = preload("res://ui.gd")
+const GenView = preload("res://genview.gd")
 
 const DEFAULT_SEED := 7
-const PARTICLE_SIZE := 11.0
 
-var sim # Sim or GpuSim (same API)
-var mm: MultiMesh
-var palette := PackedColorArray()
+var dish: Node2D
+var sim: # delegated so ui.gd works unchanged
+	get:
+		return dish.sim
+var palette: # delegated
+	get:
+		return dish.palette
+
 var paused := false
 var substeps := 1
 var ui: UI
+var genview: Control
 var fps_label: Label
 var presets: Array = [] # [{name, data}]
 var hand_strength := 9000.0
 
+var breeding := false
+var _tick1_done := false
+var _tick_count := 0
+var _work_us := 0
+var _last_log_t := 0
+var _demo := "--breed-demo" in OS.get_cmdline_user_args()
+var gen := 1
+var current_name := "wild"
+var lineage_parents: Array = []
+
+
+var _dbg_t0 := 0.0
+var _bench := OS.has_feature("debug") or "--bench" in OS.get_cmdline_user_args()
+
+func _dbg(msg: String) -> void:
+	if not _bench:
+		return
+	if _dbg_t0 == 0.0:
+		_dbg_t0 = Time.get_ticks_msec() / 1000.0
+	var f := FileAccess.open("user://debug.log", FileAccess.READ_WRITE)
+	if f == null:
+		f = FileAccess.open("user://debug.log", FileAccess.WRITE)
+	f.seek_end()
+	f.store_line("%8.2f %s" % [Time.get_ticks_msec() / 1000.0 - _dbg_t0, msg])
+	f.close()
+
 
 func _ready() -> void:
+	_dbg("ready_begin")
 	RenderingServer.set_default_clear_color(Color(0.02, 0.02, 0.045))
 	get_window().title = "Primordial Dish"
-	sim = GpuSim.new() if GpuSim.is_supported() else Sim.new()
-	sim.world_size = get_viewport_rect().size
-	sim.configure(2400, 5, DEFAULT_SEED)
-	sim.randomize_matrix()
-	_build_palette()
-	_build_multimesh()
+	dish = Dish.new()
+	add_child(dish)
+	dish.init(get_viewport_rect().size, 2400, 5, DEFAULT_SEED)
+	dish.fetch_enabled = not ("--no-fetch" in OS.get_cmdline_user_args())
+	_dbg("ready_dish world=%s sim=%s display=%s rd=%s" % [str(dish.sim.world_size), dish.sim.get_script().resource_path, DisplayServer.get_name(), str(RenderingServer.get_rendering_device() != null)])
 	_build_ui()
+	_dbg("ready_ui")
+	_build_genview()
+	_dbg("ready_genview")
 	_scan_presets()
 	if presets.size() > 0:
 		load_preset_index(0)
-	_refresh_colors()
-	_refresh_multimesh()
-
-
-func _build_palette() -> void:
-	palette.clear()
-	for i in sim.num_species:
-		palette.append(Color.from_hsv(float(i) / sim.num_species, 0.75, 1.0))
-
-
-func _build_multimesh() -> void:
-	var img := Image.create(48, 48, false, Image.FORMAT_RGBA8)
-	var c := Vector2(23.5, 23.5)
-	for y in 48:
-		for x in 48:
-			var d := (Vector2(x, y) - c).length() / 24.0
-			var a := clampf(1.0 - d, 0.0, 1.0)
-			a = a * a * (3.0 - 2.0 * a)
-			img.set_pixel(x, y, Color(1, 1, 1, a))
-	var tex := ImageTexture.create_from_image(img)
-	var quad := QuadMesh.new()
-	quad.size = Vector2(PARTICLE_SIZE, PARTICLE_SIZE)
-	var mat := CanvasItemMaterial.new()
-	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-	mm = MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_2D
-	mm.use_colors = true
-	mm.mesh = quad
-	mm.instance_count = sim.num_particles
-	var mmi := MultiMeshInstance2D.new()
-	mmi.multimesh = mm
-	mmi.texture = tex
-	mmi.material = mat
-	add_child(mmi)
+	_dbg("ready_presets")
+	dish.refresh_colors()
+	dish.refresh_transforms()
+	_dbg("ready_done")
 
 
 func _build_ui() -> void:
@@ -75,28 +79,75 @@ func _build_ui() -> void:
 	ui.build(self)
 
 
+func _build_genview() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 2
+	add_child(layer)
+	genview = GenView.new()
+	layer.add_child(genview)
+	genview.build(self)
+
+
 func _physics_process(_delta: float) -> void:
+	var _tick_t0 := Time.get_ticks_usec()
+	# dev-only scripted run: godot --path . -- --breed-demo  (regression probe)
+	if _demo:
+		if _tick_count == 60:
+			_start_generation()
+		elif _tick_count == 660:
+			_end_generation(genview.pick(2))
+		elif _tick_count == 900:
+			get_tree().quit()
 	_handle_actions()
-	if not paused:
+	if not _tick1_done:
+		_tick1_done = true
+		_dbg("tick1")
+	_tick_count += 1
+	if _bench:
+		_work_us += Time.get_ticks_usec() - _tick_t0
+		if _tick_count % 30 == 0:
+			var now := Time.get_ticks_usec()
+			_dbg("fps=%d gap=%.1fms work=%.2fms breeding=%s" % [
+				Engine.get_frames_per_second(),
+				(now - _last_log_t) / 1000.0 / 30.0,
+				_work_us / 1000.0 / 30.0,
+				str(breeding)])
+			_last_log_t = now
+			_work_us = 0
+	if breeding:
+		genview.tick(substeps)
+	elif not paused:
 		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 			sim.apply_radial(get_global_mouse_position(), 170.0, hand_strength)
 		elif Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
 			sim.apply_radial(get_global_mouse_position(), 170.0, -hand_strength)
 		elif Input.is_action_pressed("pl_stir"):
 			sim.apply_radial(sim.world_size * 0.5, 500.0, hand_strength * 0.6)
-		for s in substeps:
-			sim.step()
-		sim.fetch_positions()
-		_refresh_multimesh()
+		dish.tick(substeps)
 	if fps_label:
-		fps_label.text = "FPS %d | %d particles | K=%d%s" % [
+		fps_label.text = "FPS %d | %d particles | K=%d | %s%s" % [
 			Engine.get_frames_per_second(), sim.num_particles, sim.num_species,
-			"  [PAUSED]" if paused else ""]
+			current_name, "  [PAUSED]" if paused else ""]
 
 
 func _handle_actions() -> void:
 	var focus := get_viewport().gui_get_focus_owner()
 	if focus is LineEdit:
+		return
+	if breeding:
+		if Input.is_action_just_pressed("pl_shot"):
+			save_screenshot()
+		if Input.is_action_just_pressed("pl_faster"):
+			substeps = mini(substeps + 1, 5)
+		if Input.is_action_just_pressed("pl_slower"):
+			substeps = maxi(substeps - 1, 1)
+		if Input.is_action_just_pressed("pl_breed") or Input.is_action_just_pressed("pl_back"):
+			_end_generation({})
+		for i in 5:
+			if Input.is_action_just_pressed("pl_preset%d" % (i + 1)):
+				_end_generation(genview.pick(i))
+		if Input.is_action_just_pressed("pl_pick6"):
+			_end_generation(genview.pick(5))
 		return
 	if Input.is_action_just_pressed("pl_pause"):
 		paused = not paused
@@ -115,16 +166,8 @@ func _handle_actions() -> void:
 		substeps = mini(substeps + 1, 5)
 	if Input.is_action_just_pressed("pl_slower"):
 		substeps = maxi(substeps - 1, 1)
-
-
-func _refresh_colors() -> void:
-	for i in sim.num_particles:
-		mm.set_instance_color(i, palette[sim.species[i]])
-
-
-func _refresh_multimesh() -> void:
-	for i in sim.num_particles:
-		mm.set_instance_transform_2d(i, Transform2D(0.0, sim.pos[i]))
+	if Input.is_action_just_pressed("pl_breed"):
+		_start_generation()
 
 
 func _notification(what: int) -> void:
@@ -133,8 +176,46 @@ func _notification(what: int) -> void:
 
 
 func _exit_tree() -> void:
-	if sim and sim.has_method("shutdown"):
-		sim.shutdown()
+	genview.stop()
+	dish.shutdown()
+
+
+# ---- breeding ----
+
+func _start_generation() -> void:
+	_dbg("breed_begin")
+	var parent := {
+		"matrix": PackedFloat32Array(sim.matrix),
+		"K": sim.num_species,
+		"name": current_name,
+	}
+	var mate := {}
+	if ui.preset_list.selected >= 0 and ui.preset_list.selected < presets.size():
+		mate = presets[ui.preset_list.selected].data
+	lineage_parents = [current_name, mate.get("name", "")] if not mate.is_empty() else [current_name]
+	_dbg("breed_mate=%s" % str(lineage_parents))
+	breeding = true
+	ui.visible = false
+	genview.start_generation(parent, mate, gen)
+	_dbg("breed_started")
+
+
+func pick_child(i: int) -> void:
+	if breeding:
+		_end_generation(genview.pick(i))
+
+
+func _end_generation(winner: Dictionary) -> void:
+	breeding = false
+	genview.stop()
+	ui.visible = true
+	if winner.is_empty():
+		return
+	if winner.K == sim.num_species:
+		sim.set_matrix(winner.matrix)
+		current_name = winner.name
+		gen += 1
+		ui.update_matrix_grid()
 
 
 # ---- called by the UI ----
@@ -156,10 +237,7 @@ func set_param(key: String, value: float) -> void:
 func set_species(k: int) -> void:
 	sim.configure(sim.num_particles, k, sim.rng.seed)
 	sim.randomize_matrix()
-	_build_palette()
-	mm.instance_count = sim.num_particles
-	_refresh_colors()
-	_refresh_multimesh()
+	dish.reload()
 	ui.rebuild_matrix_grid()
 	ui.update_matrix_grid()
 
@@ -170,6 +248,7 @@ func set_matrix_at(i: int, v: float) -> void:
 
 func randomize_matrix() -> void:
 	sim.randomize_matrix()
+	current_name = "wild"
 	ui.update_matrix_grid()
 
 
@@ -179,8 +258,9 @@ func mutate_matrix() -> void:
 
 
 func zero_matrix() -> void:
-	for i in sim.matrix.size():
-		sim.matrix[i] = 0.0
+	var z := PackedFloat32Array()
+	z.resize(sim.matrix.size())
+	sim.set_matrix(z)
 	ui.update_matrix_grid()
 
 
@@ -191,6 +271,9 @@ func save_preset(pname: String) -> void:
 	DirAccess.make_dir_recursive_absolute("user://presets")
 	var d: Dictionary = sim.to_dict()
 	d["name"] = pname
+	if not lineage_parents.is_empty():
+		d["parents"] = lineage_parents
+		d["gen"] = gen
 	var f := FileAccess.open("user://presets/%s.json" % pname.validate_filename(), FileAccess.WRITE)
 	f.store_string(JSON.stringify(d, "  "))
 	f.close()
@@ -201,10 +284,8 @@ func load_preset_index(i: int) -> void:
 	if i < 0 or i >= presets.size():
 		return
 	sim.apply_dict(presets[i].data)
-	_build_palette()
-	mm.instance_count = sim.num_particles
-	_refresh_colors()
-	_refresh_multimesh()
+	current_name = presets[i].name
+	dish.reload()
 	ui.sync_from_sim()
 
 
@@ -219,7 +300,10 @@ func save_screenshot() -> void:
 func snapshot_preset() -> void:
 	DirAccess.make_dir_recursive_absolute("user://presets")
 	var d: Dictionary = sim.to_dict()
-	d["name"] = "snap_%d" % int(Time.get_unix_time_from_system())
+	d["name"] = "%s_%d" % [current_name, int(Time.get_unix_time_from_system()) % 1000000]
+	if not lineage_parents.is_empty():
+		d["parents"] = lineage_parents
+		d["gen"] = gen
 	var path := "user://presets/%s.json" % d["name"]
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_string(JSON.stringify(d, "  "))

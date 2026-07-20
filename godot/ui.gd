@@ -84,7 +84,7 @@ func build(p_host) -> void:
 	_add_button(loadrow, "Save", func(): host.save_preset(name_edit.text))
 
 	var hints := Label.new()
-	hints.text = "Space pause | R random | M mutate\n1-5 presets | LMB pull | RMB push"
+	hints.text = "Space pause | R random | M mutate | B breed\n1-5 presets | C stir | LMB pull | RMB push"
 	hints.add_theme_font_size_override("font_size", 11)
 	vbox.add_child(hints)
 
