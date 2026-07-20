@@ -32,13 +32,15 @@ equivalent — a simulation build lives on its observation loop.
 
 ## Architecture
 
-Four GDScript files + one scene + data, all in `godot/`:
+Six GDScript files + one scene + data, all in `godot/`:
 
 | file | role |
 |---|---|
-| `gpu_sim.gd` | Simulation core. RenderingDevice compute shader (GLSL, compiled at runtime) does brute-force N² force accumulation + integration + toroidal wrap, ping-ponging between buffer pairs each step. CPU keeps authoritative mirrors of species/matrix (uploaded on change) and reads positions back once per frame for rendering. |
+| `gpu_sim.gd` | Simulation core. RenderingDevice compute shader (GLSL, compiled at runtime) does brute-force N² force accumulation + integration + toroidal wrap, ping-ponging between buffer pairs each step. CPU keeps authoritative mirrors of species/matrix (uploaded on change) and reads positions back once per frame for rendering. Shader/pipeline shared across instances via refcounted statics (v1.1). |
 | `sim.gd` | Reference CPU implementation with a uniform-grid neighbor search (O(n)-ish). Same public API; automatic fallback when no RenderingDevice exists. Ran at ~2 FPS at N=2400 — kept for correctness reference and non-Vulkan contexts. |
-| `main.gd` | Wiring: sim selection (`GpuSim if is_supported()`), procedural soft-dot texture + MultiMeshInstance2D rendering (per-instance species colors, additive blend), hotkey actions, presets (scan/load/save/snapshot), full-res screenshot capture, mouse force forwarding. |
+| `dish.gd` | One self-contained dish: sim instance + palette + MultiMeshInstance2D rendering (procedural soft-dot texture shared statically, additive blend). Used for the focus dish and each breeding cell. (v1.1) |
+| `genview.gd` | Breeding mode: six live dishes in an explicit 3×2 layout — clone, mutations at σ=0.08/0.18/0.35, row-wise crossover with the dropdown-selected mate, one wild random. Cells keep particle density comparable across window sizes (N scaled to cell pixels). Pick via 1–6 or click; lineage (parents, gen) recorded into saved presets. (v1.1) |
+| `main.gd` | Wiring: mode routing (focus ⇄ breeding), hotkey actions, presets (scan/load/save/snapshot), full-res screenshot capture, mouse force forwarding, dev probes (`--bench` FPS breadcrumbs, `--breed-demo` scripted run, `--no-fetch`). |
 | `ui.gd` | Programmatic control panel: parameter sliders, species count, the K×K matrix editor (SpinBoxes colored by row/column species), preset UI, hints. |
 
 Force law (normalized `r ∈ [0,1]` over `rmax`):
@@ -67,13 +69,25 @@ Key decisions:
 
 ## Current state (actually executed)
 
-Run inside Godot 4.7 via godot-mcp on an RX 6650 XT, window 1152×648:
+Measured on an RX 6650 XT (v1.1.0, release binary unless noted):
 
-- **260 FPS** at 2400 particles, 1x speed (frame 4.2 ms, physics 2.6 ms);
-  ~58–60 FPS at 3x; 167 FPS measured in an earlier denser regime. The GDScript
-  CPU fallback: ~2 FPS — the GPU move was an ~80–130x speedup.
+- **7353 FPS uncapped** (vsync off, 2400 particles, 60 tps physics);
+  **260 FPS vsync-capped** on a 260 Hz display at 1x; ~58–60 FPS at 3x
+  (compute-bound). Breeding mode (6 dishes × 2400): ~2000–3000 FPS uncapped.
+  GDScript CPU fallback: ~2 FPS — the GPU move is an ~80–130x speedup.
+- Rendering is native-resolution (no canvas upscale): crisp at 1920×1080+.
+- Note: with vsync on, an *invisible* window (minimized/other workspace) is
+  frame-callback-starved by the compositor down to ~1 FPS on some
+  Wayland/XWayland setups — platform behavior, not a sim stall; the sim
+  itself keeps ticking. (This was misdiagnosed as a bug for a day; see
+  JOURNAL.md entry 7.)
 - All 5 presets loaded via hotkeys and screenshot-verified live; evidence in
-  `godot/screenshots/0{1..5}_*.png` captured from the running game (press `P`).
+  `godot/screenshots/0{1..5}_*.png`; breeding grid evidence in
+  `godot/screenshots/06_generation.png` (in-game capture, press `P`).
+- Breeding verified end-to-end: grid builds six distinct children with correct
+  operators and labels, pick applies winner to the focus dish (name/matrix in
+  the HUD), scripted `--breed-demo` run passes headless, lineage fields land in
+  saved preset JSON.
 - Controls verified live: presets (1–5), randomize (R), time speed ([ ]),
   snapshot (G), screenshot (P), startup auto-load of `genesis`.
 - The force-impulse chain (apply_radial → push constants → shader branch →
@@ -83,6 +97,9 @@ Run inside Godot 4.7 via godot-mcp on an RX 6650 XT, window 1152×648:
   LMB/RMB and individual matrix SpinBox edits remain review-level (the
   SpinBox path was fixed during review — missing GPU re-upload — and
   shares the verified randomize/mutate upload call). Wiggle both by hand.
+- v1.1 review-found fixes verified by run: Zero button GPU upload, breeding-
+  mode action routing, pipeline refcount (zero RID leaks on shutdown),
+  addons/ excluded from export PCKs.
 - Clean project run (`godot --path godot --quit-after 3`): zero script
   errors, zero RID leaks on shutdown.
 
@@ -91,7 +108,8 @@ Run inside Godot 4.7 via godot-mcp on an RX 6650 XT, window 1152×648:
 Open `godot/` in Godot 4.7 and press F5 (main scene is set). Controls:
 `Space` pause · `R` randomize · `M` mutate · `1–5` presets · `[` `]` time
 speed · `G` snapshot current rules as a new preset · `P` save a screenshot ·
-`C` (hold) stir everything toward the center · LMB pull / RMB push particles. Everything is also in the right-hand panel.
+`C` (hold) stir everything toward the center · `B` breed six children,
+`1`–`6`/click to pick the next parent, `B`/Esc to cancel · LMB pull / RMB push. Everything is also in the right-hand panel.
 
 ## Provenance
 

@@ -220,3 +220,45 @@ the notes. Release is tagged at the exact commit that produced it.
 That's the whole arc: blank folder → idea → 2 FPS → 260 FPS → five regimes
 → repo → release. The dish is done; may its little predators surprise
 someone else now.
+
+## Entry 7 — v1.1: the gallery, and the ghost that was just a shy window
+
+The human offered budget for the stretch item. I un-cancelled exactly half of
+it: the generation gallery — which is NOT what I rejected in entry 3. I
+rejected *automated* selection; the gallery keeps the human as the oracle and
+just gives the oracle a memory and a comparison view. Pressing B breeds six
+children from the current matrix (clone / three mutations at rising sigma /
+crossover with the dropdown-selected mate / one wild random), all live side
+by side in density-matched cells; keys 1-6 or a click picks the next parent.
+Larger N stayed rejected: it would dilute the verified presets for spectacle.
+
+The feature itself went smoothly (dish component extraction, shared GPU
+pipeline via refcounted statics, a broken GridContainer layout replaced with
+explicit cell rects). The session's monster was elsewhere: a phantom 1-FPS
+degradation that I chased through at least four wrong theories — MCP
+screenshot poisoning, bridge packing into exports, input injection killing
+the game, resolution-dependent rendering. The evidence kept contradicting
+each theory: standalone slow at ANY resolution, editor-embedded fast at 260,
+then embedded slow too, then fine again. The exorcism came from a vsync-off
+test next to the release binary: **7353 FPS uncapped**. The game was never
+slow — it was *present-starved*. On this Hyprland/XWayland setup a window
+gets no frame callbacks while it's not visible on screen, and with vsync on
+it blocks ~1s per frame. Every single "degraded" observation correlates with
+the window being invisible to the compositor at that moment — including the
+times I stared at profiler numbers in confusion while the actual game ran
+fine behind me. The ghost was that the dish doesn't like being watched by
+no one. Recorded so future-me checks "is the window even visible" before
+forming theories about performance.
+
+Honest bug tally for v1.1, all found and fixed: Zero button never uploaded
+to GPU (broken silently in v1.0.0 — sorry, downloaders of three days ago,
+all zero of you), screenshot/time-speed actions dead in breeding mode,
+shader/pipeline refcount leak across reconfigures, the dev MCP addon being
+packed into exports (unlicensed bytecode — excluded now), and my own probe
+file getting confounded by multiple processes writing one log (timestamps
+are now run-relative; confounders are now killed before measurements).
+
+Final numbers on the RX 6650 XT: 7353 FPS uncapped (2400 particles, 60tps
+physics), 260 FPS vsync-capped on the 260 Hz display, ~2000-3000 FPS
+uncapped with six breeding dishes live. If you minimize the game it will
+crawl at ~1 FPS — that's the compositor, not the sim; the dish is just shy.
